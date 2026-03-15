@@ -1,4 +1,5 @@
 import { aggregateMonthly, aggregateWeekly, calcProfit, calcRowAmount, calcTotalExpenses, formatDate, getWeekStart, round2 } from "./domain/calculations.js";
+import { getMonthlyExportRange, getWeeklyExportRange } from "./domain/date-ranges.js";
 import { validateDailyForm, validateMasterItem, validateQuantity } from "./domain/validation.js";
 import { clearDraft, loadAppData, loadDailyRecord, loadDraft, saveAppData, saveDailyRecord, saveDraft } from "./data/storage.js";
 import { createJsonBackup, restoreFromJson } from "./data/backup.js";
@@ -328,23 +329,28 @@ export function initApp() {
       })
       .join("");
 
+    const weeklyRange = getWeeklyExportRange(state.weeklyCardDate, todayStr());
+    const monthlyRange = getMonthlyExportRange(state.monthlyCardMonth, todayStr());
+
     return `
       <section class="card">
         <h2>Dashboard</h2>
         <div class="grid-3">
           <div class="metric">
-            <h3>Daily</h3>
+            <h3 class="metric-title">Daily <button id="daily-export-xlsx" type="button">Export XLSX</button></h3>
             <label class="metric-control">Date <input id="daily-card-date" type="date" value="${state.dailyCardDate}" /></label>
             <p>Revenue ${Number(current.revenue).toFixed(2)}</p><p>Expenses ${Number(current.totalExpenses).toFixed(2)}</p><p>Profit ${Number(current.profit).toFixed(2)}</p>
           </div>
           <div class="metric">
-            <h3>Weekly</h3>
+            <h3 class="metric-title">Weekly <button id="weekly-export-xlsx" type="button">Export XLSX</button></h3>
             <label class="metric-control">Date <input id="weekly-card-date" type="date" value="${state.weeklyCardDate}" /></label>
+            <p class="hint">${weeklyRange.startDate} to ${weeklyRange.endDate}</p>
             <p>Revenue ${weekly.revenue.toFixed(2)}</p><p>Expenses ${weekly.expenses.toFixed(2)}</p><p>Profit ${weekly.profit.toFixed(2)}</p>
           </div>
           <div class="metric">
-            <h3>Monthly</h3>
+            <h3 class="metric-title">Monthly <button id="monthly-export-xlsx" type="button">Export XLSX</button></h3>
             <label class="metric-control">Month <input id="monthly-card-month" type="month" value="${state.monthlyCardMonth}" /></label>
+            <p class="hint">${monthlyRange.startDate} to ${monthlyRange.endDate}</p>
             <p>Revenue ${monthly.revenue.toFixed(2)}</p><p>Expenses ${monthly.expenses.toFixed(2)}</p><p>Profit ${monthly.profit.toFixed(2)}</p>
           </div>
         </div>
@@ -695,10 +701,37 @@ export function initApp() {
 
     const xlsxExport = document.querySelector("#export-xlsx");
     if (xlsxExport) {
-      xlsxExport.addEventListener("click", () => {
-        const wb = buildWorkbook(state.data);
+      xlsxExport.remove();
+    }
+
+    const dailyExport = document.querySelector("#daily-export-xlsx");
+    if (dailyExport) {
+      dailyExport.addEventListener("click", () => {
+        const startDate = state.dailyCardDate;
+        const endDate = state.dailyCardDate;
+        const wb = buildWorkbook(state.data, { startDate, endDate });
         const data = XLSX.write(wb, { bookType: "xlsx", type: "array" });
-        downloadFile(data, `restaurant-report-${todayStr()}.xlsx`, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        downloadFile(data, `daily-${startDate}.xlsx`, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+      });
+    }
+
+    const weeklyExport = document.querySelector("#weekly-export-xlsx");
+    if (weeklyExport) {
+      weeklyExport.addEventListener("click", () => {
+        const { startDate, endDate } = getWeeklyExportRange(state.weeklyCardDate, todayStr());
+        const wb = buildWorkbook(state.data, { startDate, endDate });
+        const data = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+        downloadFile(data, `weekly-${startDate}-to-${endDate}.xlsx`, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+      });
+    }
+
+    const monthlyExport = document.querySelector("#monthly-export-xlsx");
+    if (monthlyExport) {
+      monthlyExport.addEventListener("click", () => {
+        const { startDate, endDate } = getMonthlyExportRange(state.monthlyCardMonth, todayStr());
+        const wb = buildWorkbook(state.data, { startDate, endDate });
+        const data = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+        downloadFile(data, `monthly-${startDate}-to-${endDate}.xlsx`, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
       });
     }
   }
@@ -718,7 +751,6 @@ export function initApp() {
           <button id="export-json">Export JSON</button>
           <label class="file-input">Import JSON<input id="import-json" type="file" accept=".json,application/json" /></label>
           <button id="export-csv">Export CSV</button>
-          <button id="export-xlsx">Export XLSX</button>
         </nav>
         <main>
           ${state.activeTab === "daily" ? renderDaily() : ""}

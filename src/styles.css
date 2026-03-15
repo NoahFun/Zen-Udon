@@ -138,6 +138,13 @@ td {
   background: #fff;
 }
 
+.metric-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
 .metric-control {
   margin: 0.35rem 0 0.5rem;
 }

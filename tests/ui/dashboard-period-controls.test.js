@@ -17,6 +17,9 @@ describe("dashboard period controls", () => {
     expect(document.querySelector("#monthly-card-month")).toBeTruthy();
     expect(document.querySelector("#chart-period")).toBeTruthy();
     expect(document.querySelector("#chart-sync")).toBeTruthy();
+    expect(document.querySelector("#daily-export-xlsx")).toBeTruthy();
+    expect(document.querySelector("#weekly-export-xlsx")).toBeTruthy();
+    expect(document.querySelector("#monthly-export-xlsx")).toBeTruthy();
     expect(document.querySelector("#daily-card-date").value).toBe(selectedDate);
     expect(document.querySelector("#weekly-card-date").value).toBe(selectedDate);
     expect(document.querySelector("#monthly-card-month").value).toBe(expectedMonth);
