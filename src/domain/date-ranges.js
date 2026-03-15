@@ -16,13 +16,15 @@ function endOfMonth(monthStr) {
 export function getWeeklyExportRange(selectedDate, today) {
   const startDate = formatDate(getWeekStart(selectedDate));
   const rawEndDate = endOfWeekFromDate(selectedDate);
-  const endDate = rawEndDate > today ? today : rawEndDate;
+  const isCurrentWeek = startDate <= today && today <= rawEndDate;
+  const endDate = isCurrentWeek ? today : rawEndDate;
   return { startDate, endDate };
 }
 
 export function getMonthlyExportRange(selectedMonth, today) {
   const startDate = `${selectedMonth}-01`;
   const rawEndDate = endOfMonth(selectedMonth);
-  const endDate = rawEndDate > today ? today : rawEndDate;
+  const isCurrentMonth = startDate <= today && today <= rawEndDate;
+  const endDate = isCurrentMonth ? today : rawEndDate;
   return { startDate, endDate };
 }

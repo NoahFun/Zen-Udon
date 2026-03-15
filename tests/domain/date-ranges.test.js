@@ -12,6 +12,11 @@ describe("date ranges", () => {
     expect(range).toEqual({ startDate: "2026-03-09", endDate: "2026-03-15" });
   });
 
+  it("keeps full week for future week (no cap to today)", () => {
+    const range = getWeeklyExportRange("2026-03-20", "2026-03-15");
+    expect(range).toEqual({ startDate: "2026-03-16", endDate: "2026-03-22" });
+  });
+
   it("caps current month to today", () => {
     const range = getMonthlyExportRange("2026-03", "2026-03-20");
     expect(range).toEqual({ startDate: "2026-03-01", endDate: "2026-03-20" });
@@ -20,5 +25,10 @@ describe("date ranges", () => {
   it("keeps full month for completed month", () => {
     const range = getMonthlyExportRange("2026-02", "2026-03-20");
     expect(range).toEqual({ startDate: "2026-02-01", endDate: "2026-02-28" });
+  });
+
+  it("keeps full month for future month (no cap to today)", () => {
+    const range = getMonthlyExportRange("2026-04", "2026-03-20");
+    expect(range).toEqual({ startDate: "2026-04-01", endDate: "2026-04-30" });
   });
 });
