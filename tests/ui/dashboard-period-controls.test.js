@@ -13,7 +13,7 @@ describe("dashboard period controls", () => {
     const expectedMonth = selectedDate.slice(0, 7);
 
     expect(document.querySelector("#daily-card-date")).toBeTruthy();
-    expect(document.querySelector("#weekly-card-date")).toBeTruthy();
+    expect(document.querySelector("#weekly-card-date")).toBeFalsy();
     expect(document.querySelector("#monthly-card-month")).toBeTruthy();
     expect(document.querySelector("#chart-period")).toBeTruthy();
     expect(document.querySelector("#chart-sync")).toBeTruthy();
@@ -21,7 +21,6 @@ describe("dashboard period controls", () => {
     expect(document.querySelector("#weekly-export-xlsx")).toBeTruthy();
     expect(document.querySelector("#monthly-export-xlsx")).toBeTruthy();
     expect(document.querySelector("#daily-card-date").value).toBe(selectedDate);
-    expect(document.querySelector("#weekly-card-date").value).toBe(selectedDate);
     expect(document.querySelector("#monthly-card-month").value).toBe(expectedMonth);
   });
 

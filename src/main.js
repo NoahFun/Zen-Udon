@@ -59,7 +59,6 @@ export function initApp() {
     activeTab: "daily",
     dirty: false,
     dailyCardDate: todayStr(),
-    weeklyCardDate: todayStr(),
     monthlyCardMonth: monthFromDate(todayStr()),
     chartPeriod: "daily",
     chartDate: todayStr(),
@@ -103,7 +102,6 @@ export function initApp() {
       }
     }
     state.dailyCardDate = state.selectedDate;
-    state.weeklyCardDate = state.selectedDate;
     state.monthlyCardMonth = monthFromDate(state.selectedDate);
     if (!state.chartManual) {
       state.chartDate = state.selectedDate;
@@ -312,7 +310,7 @@ export function initApp() {
 
   function renderDashboard() {
     const current = state.data.dailyRecords[state.dailyCardDate] || { revenue: 0, totalExpenses: 0, profit: 0 };
-    const weekly = aggregateWeekly(state.data.dailyRecords, state.weeklyCardDate);
+    const weekly = aggregateWeekly(state.data.dailyRecords, state.selectedDate);
     const monthly = aggregateMonthly(state.data.dailyRecords, dateFromMonth(state.monthlyCardMonth));
     const historyRows = Object.keys(state.data.dailyRecords)
       .sort()
@@ -329,7 +327,7 @@ export function initApp() {
       })
       .join("");
 
-    const weeklyRange = getWeeklyExportRange(state.weeklyCardDate, todayStr());
+    const weeklyRange = getWeeklyExportRange(state.selectedDate, todayStr());
     const monthlyRange = getMonthlyExportRange(state.monthlyCardMonth, todayStr());
 
     return `
@@ -343,7 +341,7 @@ export function initApp() {
           </div>
           <div class="metric">
             <h3 class="metric-title">Weekly <button id="weekly-export-xlsx" type="button">Export XLSX</button></h3>
-            <label class="metric-control">Date <input id="weekly-card-date" type="date" value="${state.weeklyCardDate}" /></label>
+            <p class="hint">Follows selected date: ${state.selectedDate}</p>
             <p class="hint">${weeklyRange.startDate} to ${weeklyRange.endDate}</p>
             <p>Revenue ${weekly.revenue.toFixed(2)}</p><p>Expenses ${weekly.expenses.toFixed(2)}</p><p>Profit ${weekly.profit.toFixed(2)}</p>
           </div>
@@ -607,14 +605,6 @@ export function initApp() {
       });
     }
 
-    const weeklyCardDate = document.querySelector("#weekly-card-date");
-    if (weeklyCardDate) {
-      weeklyCardDate.addEventListener("change", () => {
-        state.weeklyCardDate = weeklyCardDate.value || state.selectedDate;
-        render();
-      });
-    }
-
     const monthlyCardMonth = document.querySelector("#monthly-card-month");
     if (monthlyCardMonth) {
       monthlyCardMonth.addEventListener("change", () => {
@@ -718,7 +708,7 @@ export function initApp() {
     const weeklyExport = document.querySelector("#weekly-export-xlsx");
     if (weeklyExport) {
       weeklyExport.addEventListener("click", () => {
-        const { startDate, endDate } = getWeeklyExportRange(state.weeklyCardDate, todayStr());
+        const { startDate, endDate } = getWeeklyExportRange(state.selectedDate, todayStr());
         const wb = buildWorkbook(state.data, { startDate, endDate });
         const data = XLSX.write(wb, { bookType: "xlsx", type: "array" });
         downloadFile(data, `weekly-${startDate}-to-${endDate}.xlsx`, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
