@@ -15,4 +15,16 @@ describe("daily revenue input UX", () => {
     expect(document.activeElement).toBe(nextRevenue);
     expect(nextRevenue.value).toBe("1");
   });
+
+  it("does not recreate revenue input element on each keystroke", () => {
+    document.body.innerHTML = '<div id="app"></div>';
+    initApp();
+
+    const revenue = document.querySelector("#daily-revenue");
+    revenue.value = "12";
+    revenue.dispatchEvent(new Event("input", { bubbles: true }));
+
+    const sameRevenue = document.querySelector("#daily-revenue");
+    expect(sameRevenue).toBe(revenue);
+  });
 });

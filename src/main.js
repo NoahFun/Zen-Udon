@@ -260,7 +260,7 @@ export function initApp() {
         <td>
           <input data-action="qty" data-id="${row.itemId}" type="number" min="0" step="0.01" value="${state.quantities[row.itemId] ?? ""}" />
         </td>
-        <td>${Number(row.amount).toFixed(2)}</td>
+        <td data-amount-for="${row.itemId}">${Number(row.amount).toFixed(2)}</td>
       </tr>`
       )
       .join("");
@@ -278,8 +278,8 @@ export function initApp() {
           <tbody>${tableRows}</tbody>
         </table>
         <div class="summary">
-          <div>Total Expenses: <strong>${totalExpenses.toFixed(2)}</strong></div>
-          <div>Profit: <strong>${profit.toFixed(2)}</strong></div>
+          <div>Total Expenses: <strong id="total-expenses">${totalExpenses.toFixed(2)}</strong></div>
+          <div>Profit: <strong id="daily-profit">${profit.toFixed(2)}</strong></div>
         </div>
         <label>Notes <textarea id="daily-notes" rows="3">${escapeHtml(state.notes)}</textarea></label>
         <button id="save-day">Save Day</button>
@@ -382,10 +382,16 @@ export function initApp() {
   }
 
   function bindEvents() {
-    function renderAndRefocus(selector) {
-      render();
-      const input = document.querySelector(selector);
-      if (input) input.focus();
+    function refreshDailyComputedFields() {
+      const { rows, totalExpenses, profit } = calculateCurrent();
+      rows.forEach((row) => {
+        const amountCell = document.querySelector(`[data-amount-for='${row.itemId}']`);
+        if (amountCell) amountCell.textContent = Number(row.amount).toFixed(2);
+      });
+      const totalEl = document.querySelector("#total-expenses");
+      if (totalEl) totalEl.textContent = totalExpenses.toFixed(2);
+      const profitEl = document.querySelector("#daily-profit");
+      if (profitEl) profitEl.textContent = profit.toFixed(2);
     }
 
     const navButtons = document.querySelectorAll("[data-nav]");
@@ -453,7 +459,7 @@ export function initApp() {
         state.revenue = revenueInput.value;
         markDirty(true);
         saveDraftSnapshot();
-        renderAndRefocus("#daily-revenue");
+        refreshDailyComputedFields();
       });
     }
 
@@ -472,7 +478,7 @@ export function initApp() {
         state.quantities[id] = input.value;
         markDirty(true);
         saveDraftSnapshot();
-        renderAndRefocus(`[data-action='qty'][data-id='${id}']`);
+        refreshDailyComputedFields();
       });
     });
 
