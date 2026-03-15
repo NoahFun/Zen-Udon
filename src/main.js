@@ -9,7 +9,6 @@ import {
   loadCloudAppData,
   signInWithPassword,
   signOut,
-  signUpWithPassword,
   upsertCloudDailyRecord,
   upsertCloudMasterItem,
   deleteCloudMasterItem
@@ -58,8 +57,8 @@ function escapeHtml(text) {
 export async function initApp() {
   const root = document.querySelector("#app");
   if (!root) return;
-  const cloudClient = null;
-  const cloudMode = false;
+  const cloudClient = createCloudClient();
+  const cloudMode = Boolean(cloudClient);
   let authUserId = null;
   let logoutOnClose = false;
 
@@ -124,10 +123,6 @@ export async function initApp() {
       <section class="card" data-view="auth">
         <h2>Account Access</h2>
         <p id="auth-message" class="message ${kind}">${escapeHtml(message)}</p>
-        <div class="meta-row">
-          <button id="auth-tab-login" type="button">Login</button>
-          <button id="auth-tab-signup" type="button">Sign Up</button>
-        </div>
         <form id="auth-form" class="inline-form">
           <label>Email <input id="auth-email" type="email" required /></label>
           <label>Password <input id="auth-password" type="password" minlength="6" required /></label>
@@ -137,27 +132,7 @@ export async function initApp() {
       </section>
     `;
 
-    let mode = "login";
-    const submitBtn = document.querySelector("#auth-submit");
-    const tabLogin = document.querySelector("#auth-tab-login");
-    const tabSignup = document.querySelector("#auth-tab-signup");
     const msg = document.querySelector("#auth-message");
-
-    function syncAuthView() {
-      submitBtn.textContent = mode === "login" ? "Login" : "Sign Up";
-      tabLogin.className = mode === "login" ? "active" : "";
-      tabSignup.className = mode === "signup" ? "active" : "";
-    }
-    syncAuthView();
-
-    tabLogin?.addEventListener("click", () => {
-      mode = "login";
-      syncAuthView();
-    });
-    tabSignup?.addEventListener("click", () => {
-      mode = "signup";
-      syncAuthView();
-    });
 
     const authForm = document.querySelector("#auth-form");
     authForm?.addEventListener("submit", async (event) => {
@@ -166,15 +141,9 @@ export async function initApp() {
       const password = String(document.querySelector("#auth-password")?.value || "");
       const rememberMe = Boolean(document.querySelector("#auth-remember")?.checked);
       try {
-        const result = mode === "login"
-          ? await signInWithPassword(cloudClient, email, password)
-          : await signUpWithPassword(cloudClient, email, password);
+        const result = await signInWithPassword(cloudClient, email, password);
         if (result.error) throw result.error;
-        if (!result.data.session) {
-          msg.textContent = "Sign-up created. Check your email confirmation settings, then login.";
-          msg.className = "message ok";
-          return;
-        }
+        if (!result.data.session) throw new Error("Login did not create a valid session.");
         await afterCloudAuth(result.data.session, rememberMe);
       } catch (error) {
         msg.textContent = error?.message || "Authentication failed.";
