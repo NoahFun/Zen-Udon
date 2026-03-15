@@ -13,7 +13,7 @@ describe("dashboard period controls", () => {
     const expectedMonth = selectedDate.slice(0, 7);
 
     expect(document.querySelector("#daily-card-date")).toBeTruthy();
-    expect(document.querySelector("#weekly-card-date")).toBeFalsy();
+    expect(document.querySelector("#weekly-card-date")).toBeTruthy();
     expect(document.querySelector("#monthly-card-month")).toBeTruthy();
     expect(document.querySelector("#chart-period")).toBeTruthy();
     expect(document.querySelector("#chart-sync")).toBeTruthy();
@@ -35,5 +35,23 @@ describe("dashboard period controls", () => {
 
     expect(document.querySelector("#chart-month")).toBeTruthy();
     expect(document.querySelector("#chart-date")).toBeFalsy();
+  });
+
+  it("keeps weekly selector independent from daily date change", () => {
+    document.body.innerHTML = '<div id="app"></div>';
+    initApp();
+
+    document.querySelector("[data-nav='dashboard']").click();
+    const weeklyInput = document.querySelector("#weekly-card-date");
+    weeklyInput.value = "2026-03-10";
+    weeklyInput.dispatchEvent(new Event("change", { bubbles: true }));
+
+    document.querySelector("[data-nav='daily']").click();
+    const dailyDate = document.querySelector("#daily-date");
+    dailyDate.value = "2026-03-20";
+    dailyDate.dispatchEvent(new Event("change", { bubbles: true }));
+
+    document.querySelector("[data-nav='dashboard']").click();
+    expect(document.querySelector("#weekly-card-date").value).toBe("2026-03-10");
   });
 });
