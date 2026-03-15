@@ -1,0 +1,168 @@
+:root {
+  --bg: #f8efe1;
+  --panel: #fffdf8;
+  --line: #d8c8ab;
+  --ink: #231f1a;
+  --muted: #6f6253;
+  --accent: #d94f2b;
+  --accent-2: #1a8f5d;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: radial-gradient(circle at 10% 0%, #fff7ea, var(--bg) 40%);
+  color: var(--ink);
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.app-shell {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 1rem;
+}
+
+header h1 {
+  margin: 0 0 0.25rem;
+}
+
+nav {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button {
+  border: 1px solid var(--line);
+  background: #fff;
+  padding: 0.45rem 0.7rem;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+button.active {
+  background: var(--accent);
+  color: #fff;
+  border-color: #b33e20;
+}
+
+button.danger {
+  color: #8f1e1e;
+}
+
+.spacer {
+  flex: 1;
+}
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 1rem;
+}
+
+.meta-row,
+.inline-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+label {
+  display: grid;
+  gap: 0.2rem;
+  font-size: 0.95rem;
+}
+
+input,
+textarea {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.5rem;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 0.75rem;
+}
+
+th,
+td {
+  border-bottom: 1px solid #eee2cf;
+  padding: 0.45rem;
+  text-align: left;
+}
+
+.actions-cell {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.summary {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.grid-3 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.75rem;
+}
+
+.grid-2 {
+  margin: 0.75rem 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 0.75rem;
+}
+
+.metric {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.65rem;
+  background: #fff;
+}
+
+.message {
+  min-height: 1.2rem;
+  margin: 0.2rem 0 0;
+  color: var(--muted);
+}
+
+.message.ok {
+  color: var(--accent-2);
+}
+
+.message.error {
+  color: #b91c1c;
+}
+
+.hint {
+  color: var(--muted);
+}
+
+.file-input input {
+  display: none;
+}
+
+@media (max-width: 760px) {
+  .summary {
+    flex-direction: column;
+    gap: 0.3rem;
+  }
+}
