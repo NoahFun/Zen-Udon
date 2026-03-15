@@ -58,8 +58,8 @@ function escapeHtml(text) {
 export async function initApp() {
   const root = document.querySelector("#app");
   if (!root) return;
-  const cloudClient = createCloudClient();
-  const cloudMode = Boolean(cloudClient);
+  const cloudClient = null;
+  const cloudMode = false;
   let authUserId = null;
   let logoutOnClose = false;
 
