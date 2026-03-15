@@ -382,6 +382,12 @@ export function initApp() {
   }
 
   function bindEvents() {
+    function renderAndRefocus(selector) {
+      render();
+      const input = document.querySelector(selector);
+      if (input) input.focus();
+    }
+
     const navButtons = document.querySelectorAll("[data-nav]");
     navButtons.forEach((btn) => {
       btn.addEventListener("click", () => {
@@ -447,7 +453,7 @@ export function initApp() {
         state.revenue = revenueInput.value;
         markDirty(true);
         saveDraftSnapshot();
-        render();
+        renderAndRefocus("#daily-revenue");
       });
     }
 
@@ -466,7 +472,7 @@ export function initApp() {
         state.quantities[id] = input.value;
         markDirty(true);
         saveDraftSnapshot();
-        render();
+        renderAndRefocus(`[data-action='qty'][data-id='${id}']`);
       });
     });
 
