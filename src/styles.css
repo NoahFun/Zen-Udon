@@ -138,6 +138,18 @@ td {
   background: #fff;
 }
 
+.metric-control {
+  margin: 0.35rem 0 0.5rem;
+}
+
+.chart-controls {
+  display: flex;
+  gap: 0.6rem;
+  align-items: end;
+  flex-wrap: wrap;
+  margin: 0.75rem 0;
+}
+
 .message {
   min-height: 1.2rem;
   margin: 0.2rem 0 0;

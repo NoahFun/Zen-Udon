@@ -1,4 +1,4 @@
-import { aggregateMonthly, aggregateWeekly, calcProfit, calcRowAmount, calcTotalExpenses, round2 } from "./domain/calculations.js";
+import { aggregateMonthly, aggregateWeekly, calcProfit, calcRowAmount, calcTotalExpenses, formatDate, getWeekStart, round2 } from "./domain/calculations.js";
 import { validateDailyForm, validateMasterItem, validateQuantity } from "./domain/validation.js";
 import { clearDraft, loadAppData, loadDailyRecord, loadDraft, saveAppData, saveDailyRecord, saveDraft } from "./data/storage.js";
 import { createJsonBackup, restoreFromJson } from "./data/backup.js";
@@ -16,6 +16,14 @@ function todayStr() {
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
+}
+
+function monthFromDate(dateStr) {
+  return String(dateStr || todayStr()).slice(0, 7);
+}
+
+function dateFromMonth(monthStr) {
+  return `${monthStr}-01`;
 }
 
 function downloadFile(content, fileName, mimeType) {
@@ -48,7 +56,14 @@ export function initApp() {
     notes: "",
     editingItemId: null,
     activeTab: "daily",
-    dirty: false
+    dirty: false,
+    dailyCardDate: todayStr(),
+    weeklyCardDate: todayStr(),
+    monthlyCardMonth: monthFromDate(todayStr()),
+    chartPeriod: "daily",
+    chartDate: todayStr(),
+    chartMonth: monthFromDate(todayStr()),
+    chartManual: false
   };
 
   function markDirty(flag) {
@@ -85,6 +100,13 @@ export function initApp() {
         state.notes = "";
         state.quantities = {};
       }
+    }
+    state.dailyCardDate = state.selectedDate;
+    state.weeklyCardDate = state.selectedDate;
+    state.monthlyCardMonth = monthFromDate(state.selectedDate);
+    if (!state.chartManual) {
+      state.chartDate = state.selectedDate;
+      state.chartMonth = monthFromDate(state.selectedDate);
     }
   }
 
@@ -288,9 +310,9 @@ export function initApp() {
   }
 
   function renderDashboard() {
-    const current = state.data.dailyRecords[state.selectedDate] || { revenue: 0, totalExpenses: 0, profit: 0 };
-    const weekly = aggregateWeekly(state.data.dailyRecords, state.selectedDate);
-    const monthly = aggregateMonthly(state.data.dailyRecords, state.selectedDate);
+    const current = state.data.dailyRecords[state.dailyCardDate] || { revenue: 0, totalExpenses: 0, profit: 0 };
+    const weekly = aggregateWeekly(state.data.dailyRecords, state.weeklyCardDate);
+    const monthly = aggregateMonthly(state.data.dailyRecords, dateFromMonth(state.monthlyCardMonth));
     const historyRows = Object.keys(state.data.dailyRecords)
       .sort()
       .reverse()
@@ -310,9 +332,34 @@ export function initApp() {
       <section class="card">
         <h2>Dashboard</h2>
         <div class="grid-3">
-          <div class="metric"><h3>Daily</h3><p>Revenue ${Number(current.revenue).toFixed(2)}</p><p>Expenses ${Number(current.totalExpenses).toFixed(2)}</p><p>Profit ${Number(current.profit).toFixed(2)}</p></div>
-          <div class="metric"><h3>Weekly</h3><p>Revenue ${weekly.revenue.toFixed(2)}</p><p>Expenses ${weekly.expenses.toFixed(2)}</p><p>Profit ${weekly.profit.toFixed(2)}</p></div>
-          <div class="metric"><h3>Monthly</h3><p>Revenue ${monthly.revenue.toFixed(2)}</p><p>Expenses ${monthly.expenses.toFixed(2)}</p><p>Profit ${monthly.profit.toFixed(2)}</p></div>
+          <div class="metric">
+            <h3>Daily</h3>
+            <label class="metric-control">Date <input id="daily-card-date" type="date" value="${state.dailyCardDate}" /></label>
+            <p>Revenue ${Number(current.revenue).toFixed(2)}</p><p>Expenses ${Number(current.totalExpenses).toFixed(2)}</p><p>Profit ${Number(current.profit).toFixed(2)}</p>
+          </div>
+          <div class="metric">
+            <h3>Weekly</h3>
+            <label class="metric-control">Date <input id="weekly-card-date" type="date" value="${state.weeklyCardDate}" /></label>
+            <p>Revenue ${weekly.revenue.toFixed(2)}</p><p>Expenses ${weekly.expenses.toFixed(2)}</p><p>Profit ${weekly.profit.toFixed(2)}</p>
+          </div>
+          <div class="metric">
+            <h3>Monthly</h3>
+            <label class="metric-control">Month <input id="monthly-card-month" type="month" value="${state.monthlyCardMonth}" /></label>
+            <p>Revenue ${monthly.revenue.toFixed(2)}</p><p>Expenses ${monthly.expenses.toFixed(2)}</p><p>Profit ${monthly.profit.toFixed(2)}</p>
+          </div>
+        </div>
+        <div class="chart-controls">
+          <label>Chart Period
+            <select id="chart-period">
+              <option value="daily" ${state.chartPeriod === "daily" ? "selected" : ""}>Daily</option>
+              <option value="weekly" ${state.chartPeriod === "weekly" ? "selected" : ""}>Weekly</option>
+              <option value="monthly" ${state.chartPeriod === "monthly" ? "selected" : ""}>Monthly</option>
+            </select>
+          </label>
+          ${state.chartPeriod === "monthly"
+            ? `<label>Month <input id="chart-month" type="month" value="${state.chartMonth}" /></label>`
+            : `<label>Date <input id="chart-date" type="date" value="${state.chartDate}" /></label>`}
+          <button id="chart-sync">Sync to selected date</button>
         </div>
         <div class="grid-2">
           <canvas id="profit-chart" width="460" height="220"></canvas>
@@ -328,23 +375,77 @@ export function initApp() {
   }
 
   function drawCharts() {
+    if (typeof navigator !== "undefined" && /jsdom/i.test(navigator.userAgent)) return;
     const profitCanvas = document.querySelector("#profit-chart");
     const categoryCanvas = document.querySelector("#category-chart");
     if (!profitCanvas || !categoryCanvas) return;
 
-    const pctx = profitCanvas.getContext("2d");
-    const cctx = categoryCanvas.getContext("2d");
+    let pctx;
+    let cctx;
+    try {
+      pctx = profitCanvas.getContext("2d");
+      cctx = categoryCanvas.getContext("2d");
+    } catch {
+      return;
+    }
     if (!pctx || !cctx) return;
 
     pctx.clearRect(0, 0, profitCanvas.width, profitCanvas.height);
     cctx.clearRect(0, 0, categoryCanvas.width, categoryCanvas.height);
 
-    const points = Object.keys(state.data.dailyRecords).sort().slice(-14).map((date) => ({
-      date,
-      value: Number(state.data.dailyRecords[date].profit || 0)
-    }));
+    let points = [];
+    let categorySourceRows = [];
+    let profitTitle = "Profit Trend";
+    let categoryTitle = "Expense by Category";
+    if (state.chartPeriod === "daily") {
+      const cut = state.chartDate || state.selectedDate;
+      points = Object.keys(state.data.dailyRecords)
+        .sort()
+        .filter((date) => date <= cut)
+        .slice(-14)
+        .map((date) => ({ label: date, value: Number(state.data.dailyRecords[date].profit || 0) }));
+      const current = state.data.dailyRecords[cut];
+      categorySourceRows = current?.rows || [];
+      profitTitle = "Profit Trend (daily)";
+      categoryTitle = "Expense by Category (selected day)";
+    } else if (state.chartPeriod === "weekly") {
+      const ref = new Date(`${state.chartDate || state.selectedDate}T00:00:00`);
+      for (let i = 7; i >= 0; i -= 1) {
+        const d = new Date(ref);
+        d.setDate(ref.getDate() - i * 7);
+        const key = formatDate(d);
+        const agg = aggregateWeekly(state.data.dailyRecords, key);
+        points.push({ label: key, value: agg.profit });
+      }
+      const weekStart = getWeekStart(state.chartDate || state.selectedDate);
+      for (let i = 0; i < 7; i += 1) {
+        const d = new Date(weekStart);
+        d.setDate(weekStart.getDate() + i);
+        const rec = state.data.dailyRecords[formatDate(d)];
+        if (rec?.rows) categorySourceRows.push(...rec.rows);
+      }
+      profitTitle = "Profit Trend (weekly)";
+      categoryTitle = "Expense by Category (selected week)";
+    } else {
+      const [y, m] = (state.chartMonth || monthFromDate(state.selectedDate)).split("-").map(Number);
+      const ref = new Date(y, m - 1, 1);
+      for (let i = 5; i >= 0; i -= 1) {
+        const d = new Date(ref);
+        d.setMonth(ref.getMonth() - i);
+        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+        const agg = aggregateMonthly(state.data.dailyRecords, `${key}-01`);
+        points.push({ label: key, value: agg.profit });
+      }
+      const monthKey = state.chartMonth || monthFromDate(state.selectedDate);
+      Object.values(state.data.dailyRecords).forEach((rec) => {
+        if (String(rec.date).startsWith(monthKey) && rec.rows) categorySourceRows.push(...rec.rows);
+      });
+      profitTitle = "Profit Trend (monthly)";
+      categoryTitle = "Expense by Category (selected month)";
+    }
+
     pctx.fillStyle = "#111";
-    pctx.fillText("Profit Trend (last 14 saved days)", 12, 16);
+    pctx.fillText(profitTitle, 12, 16);
     if (points.length > 1) {
       const min = Math.min(...points.map((x) => x.value), 0);
       const max = Math.max(...points.map((x) => x.value), 1);
@@ -361,16 +462,13 @@ export function initApp() {
       pctx.stroke();
     }
 
-    const current = state.data.dailyRecords[state.selectedDate];
     const byCategory = {};
-    if (current) {
-      current.rows.forEach((row) => {
-        byCategory[row.category] = Number(byCategory[row.category] || 0) + Number(row.amount || 0);
-      });
-    }
+    categorySourceRows.forEach((row) => {
+      byCategory[row.category] = Number(byCategory[row.category] || 0) + Number(row.amount || 0);
+    });
     const entries = Object.entries(byCategory);
     cctx.fillStyle = "#111";
-    cctx.fillText("Expense by Category (selected day)", 12, 16);
+    cctx.fillText(categoryTitle, 12, 16);
     entries.forEach(([cat, value], i) => {
       const y = 40 + i * 42;
       const width = Math.min(350, value);
@@ -494,6 +592,69 @@ export function initApp() {
         render();
       });
     });
+
+    const dailyCardDate = document.querySelector("#daily-card-date");
+    if (dailyCardDate) {
+      dailyCardDate.addEventListener("change", () => {
+        state.dailyCardDate = dailyCardDate.value || state.selectedDate;
+        render();
+      });
+    }
+
+    const weeklyCardDate = document.querySelector("#weekly-card-date");
+    if (weeklyCardDate) {
+      weeklyCardDate.addEventListener("change", () => {
+        state.weeklyCardDate = weeklyCardDate.value || state.selectedDate;
+        render();
+      });
+    }
+
+    const monthlyCardMonth = document.querySelector("#monthly-card-month");
+    if (monthlyCardMonth) {
+      monthlyCardMonth.addEventListener("change", () => {
+        state.monthlyCardMonth = monthlyCardMonth.value || monthFromDate(state.selectedDate);
+        render();
+      });
+    }
+
+    const chartPeriod = document.querySelector("#chart-period");
+    if (chartPeriod) {
+      chartPeriod.addEventListener("change", () => {
+        state.chartPeriod = chartPeriod.value;
+        state.chartManual = true;
+        if (state.chartPeriod === "monthly" && !state.chartMonth) state.chartMonth = monthFromDate(state.selectedDate);
+        if (state.chartPeriod !== "monthly" && !state.chartDate) state.chartDate = state.selectedDate;
+        render();
+      });
+    }
+
+    const chartDate = document.querySelector("#chart-date");
+    if (chartDate) {
+      chartDate.addEventListener("change", () => {
+        state.chartDate = chartDate.value || state.selectedDate;
+        state.chartManual = true;
+        render();
+      });
+    }
+
+    const chartMonth = document.querySelector("#chart-month");
+    if (chartMonth) {
+      chartMonth.addEventListener("change", () => {
+        state.chartMonth = chartMonth.value || monthFromDate(state.selectedDate);
+        state.chartManual = true;
+        render();
+      });
+    }
+
+    const chartSync = document.querySelector("#chart-sync");
+    if (chartSync) {
+      chartSync.addEventListener("click", () => {
+        state.chartManual = false;
+        state.chartDate = state.selectedDate;
+        state.chartMonth = monthFromDate(state.selectedDate);
+        render();
+      });
+    }
 
     const jsonExport = document.querySelector("#export-json");
     if (jsonExport) {
