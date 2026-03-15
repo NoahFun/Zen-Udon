@@ -22,6 +22,9 @@ describe("dashboard period controls", () => {
     expect(document.querySelector("#monthly-export-xlsx")).toBeTruthy();
     expect(document.querySelector("#daily-card-date").value).toBe(selectedDate);
     expect(document.querySelector("#monthly-card-month").value).toBe(expectedMonth);
+    expect(document.querySelector("#import-json")).toBeFalsy();
+    expect(document.querySelector("#export-json")).toBeFalsy();
+    expect(document.querySelector("#export-csv")).toBeFalsy();
   });
 
   it("switches chart input mode for monthly period", () => {

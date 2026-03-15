@@ -9,6 +9,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.57.4",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {

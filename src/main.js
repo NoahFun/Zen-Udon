@@ -2,8 +2,18 @@ import { aggregateMonthly, aggregateWeekly, calcProfit, calcRowAmount, calcTotal
 import { getMonthlyExportRange, getWeeklyExportRange } from "./domain/date-ranges.js";
 import { validateDailyForm, validateMasterItem, validateQuantity } from "./domain/validation.js";
 import { clearDraft, loadAppData, loadDailyRecord, loadDraft, saveAppData, saveDailyRecord, saveDraft } from "./data/storage.js";
-import { createJsonBackup, restoreFromJson } from "./data/backup.js";
-import { buildCsvRows, toCsvString } from "./reports/export-csv.js";
+import {
+  createCloudClient,
+  ensureProfileAndSeed,
+  getCurrentSession,
+  loadCloudAppData,
+  signInWithPassword,
+  signOut,
+  signUpWithPassword,
+  upsertCloudDailyRecord,
+  upsertCloudMasterItem,
+  deleteCloudMasterItem
+} from "./data/cloud-storage.js";
 import { buildWorkbook } from "./reports/export-xlsx.js";
 import * as XLSX from "xlsx";
 
@@ -45,12 +55,16 @@ function escapeHtml(text) {
     .replaceAll('"', "&quot;");
 }
 
-export function initApp() {
+export async function initApp() {
   const root = document.querySelector("#app");
   if (!root) return;
+  const cloudClient = createCloudClient();
+  const cloudMode = Boolean(cloudClient);
+  let authUserId = null;
+  let logoutOnClose = false;
 
   const state = {
-    data: loadAppData(),
+    data: cloudMode ? { masterItems: [], dailyRecords: {} } : loadAppData(),
     selectedDate: todayStr(),
     revenue: "",
     quantities: {},
@@ -64,7 +78,8 @@ export function initApp() {
     chartPeriod: "daily",
     chartDate: todayStr(),
     chartMonth: monthFromDate(todayStr()),
-    chartManual: false
+    chartManual: false,
+    dailyCategoryFilter: "all"
   };
 
   function markDirty(flag) {
@@ -80,9 +95,97 @@ export function initApp() {
     return state.data.masterItems.find((x) => x.id === itemId);
   }
 
+  function findDailyRecordByDate(date) {
+    if (cloudMode) return state.data.dailyRecords[date] || null;
+    return loadDailyRecord(date);
+  }
+
+  async function refreshCloudData() {
+    if (!cloudMode || !authUserId) return;
+    state.data = await loadCloudAppData(cloudClient, authUserId);
+  }
+
+  async function afterCloudAuth(session, rememberMe) {
+    authUserId = session.user.id;
+    logoutOnClose = !rememberMe;
+    if (logoutOnClose) {
+      window.addEventListener("beforeunload", () => {
+        signOut(cloudClient);
+      }, { once: true });
+    }
+    await ensureProfileAndSeed(cloudClient, authUserId);
+    await refreshCloudData();
+    loadDate(state.selectedDate);
+    render();
+  }
+
+  function renderAuth(message = "", kind = "ok") {
+    root.innerHTML = `
+      <section class="card" data-view="auth">
+        <h2>Account Access</h2>
+        <p id="auth-message" class="message ${kind}">${escapeHtml(message)}</p>
+        <div class="meta-row">
+          <button id="auth-tab-login" type="button">Login</button>
+          <button id="auth-tab-signup" type="button">Sign Up</button>
+        </div>
+        <form id="auth-form" class="inline-form">
+          <label>Email <input id="auth-email" type="email" required /></label>
+          <label>Password <input id="auth-password" type="password" minlength="6" required /></label>
+          <label><input id="auth-remember" type="checkbox" checked /> Remember me</label>
+          <button id="auth-submit" type="submit">Login</button>
+        </form>
+      </section>
+    `;
+
+    let mode = "login";
+    const submitBtn = document.querySelector("#auth-submit");
+    const tabLogin = document.querySelector("#auth-tab-login");
+    const tabSignup = document.querySelector("#auth-tab-signup");
+    const msg = document.querySelector("#auth-message");
+
+    function syncAuthView() {
+      submitBtn.textContent = mode === "login" ? "Login" : "Sign Up";
+      tabLogin.className = mode === "login" ? "active" : "";
+      tabSignup.className = mode === "signup" ? "active" : "";
+    }
+    syncAuthView();
+
+    tabLogin?.addEventListener("click", () => {
+      mode = "login";
+      syncAuthView();
+    });
+    tabSignup?.addEventListener("click", () => {
+      mode = "signup";
+      syncAuthView();
+    });
+
+    const authForm = document.querySelector("#auth-form");
+    authForm?.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const email = String(document.querySelector("#auth-email")?.value || "").trim();
+      const password = String(document.querySelector("#auth-password")?.value || "");
+      const rememberMe = Boolean(document.querySelector("#auth-remember")?.checked);
+      try {
+        const result = mode === "login"
+          ? await signInWithPassword(cloudClient, email, password)
+          : await signUpWithPassword(cloudClient, email, password);
+        if (result.error) throw result.error;
+        if (!result.data.session) {
+          msg.textContent = "Sign-up created. Check your email confirmation settings, then login.";
+          msg.className = "message ok";
+          return;
+        }
+        await afterCloudAuth(result.data.session, rememberMe);
+      } catch (error) {
+        msg.textContent = error?.message || "Authentication failed.";
+        msg.className = "message error";
+      }
+    });
+  }
+
   function loadDate(date) {
     state.selectedDate = date;
-    const rec = loadDailyRecord(date);
+    const rec = findDailyRecordByDate(date);
     if (rec) {
       state.revenue = String(rec.revenue);
       state.notes = rec.notes || "";
@@ -91,15 +194,21 @@ export function initApp() {
         state.quantities[row.itemId] = String(row.quantity);
       });
     } else {
-      const draft = loadDraft();
-      if (draft && draft.date === date) {
-        state.revenue = draft.revenue ?? "";
-        state.notes = draft.notes ?? "";
-        state.quantities = draft.quantities || {};
-      } else {
+      if (cloudMode) {
         state.revenue = "";
         state.notes = "";
         state.quantities = {};
+      } else {
+        const draft = loadDraft();
+        if (draft && draft.date === date) {
+          state.revenue = draft.revenue ?? "";
+          state.notes = draft.notes ?? "";
+          state.quantities = draft.quantities || {};
+        } else {
+          state.revenue = "";
+          state.notes = "";
+          state.quantities = {};
+        }
       }
     }
     state.dailyCardDate = state.selectedDate;
@@ -112,7 +221,11 @@ export function initApp() {
   }
 
   function deriveRows() {
-    return state.data.masterItems.map((item) => {
+    const visibleItems = state.data.masterItems.filter((item) => {
+      if (state.dailyCategoryFilter === "all") return true;
+      return item.category === state.dailyCategoryFilter;
+    });
+    return visibleItems.map((item) => {
       const quantity = Number(state.quantities[item.id] || 0);
       const amount = calcRowAmount(item.unitCost, quantity);
       return {
@@ -142,6 +255,7 @@ export function initApp() {
   }
 
   function saveDraftSnapshot() {
+    if (cloudMode) return;
     saveDraft({
       date: state.selectedDate,
       revenue: state.revenue,
@@ -150,7 +264,21 @@ export function initApp() {
     });
   }
 
-  function upsertItem(payload) {
+  function clearDailyFields() {
+    state.revenue = "";
+    state.notes = "";
+    state.quantities = {};
+  }
+
+  async function upsertItem(payload) {
+    if (cloudMode) {
+      await upsertCloudMasterItem(cloudClient, authUserId, payload, state.editingItemId);
+      state.editingItemId = null;
+      await refreshCloudData();
+      markDirty(true);
+      render();
+      return;
+    }
     const now = new Date().toISOString();
     if (state.editingItemId) {
       state.data.masterItems = state.data.masterItems.map((item) => {
@@ -171,11 +299,19 @@ export function initApp() {
     render();
   }
 
-  function deleteItem(id) {
+  async function deleteItem(id) {
     const item = findItem(id);
     if (!item) return;
     const ok = window.confirm(`Delete item "${item.itemName}"?`);
     if (!ok) return;
+    if (cloudMode) {
+      await deleteCloudMasterItem(cloudClient, authUserId, id);
+      delete state.quantities[id];
+      await refreshCloudData();
+      markDirty(true);
+      render();
+      return;
+    }
     state.data.masterItems = state.data.masterItems.filter((x) => x.id !== id);
     delete state.quantities[id];
     saveAppData(state.data);
@@ -183,13 +319,16 @@ export function initApp() {
     render();
   }
 
-  function saveDay() {
+  async function saveDay() {
     const dailyValid = validateDailyForm(state.selectedDate, state.revenue);
     if (!dailyValid.valid) {
       showMessage(Object.values(dailyValid.errors)[0], "error");
       return;
     }
+    const visibleRows = deriveRows();
+    const visibleItemIds = new Set(visibleRows.map((row) => row.itemId));
     for (const [itemId, quantity] of Object.entries(state.quantities)) {
+      if (!visibleItemIds.has(itemId)) continue;
       if (quantity === "") continue;
       if (!validateQuantity(quantity)) {
         const item = findItem(itemId);
@@ -198,7 +337,7 @@ export function initApp() {
       }
     }
 
-    const existing = loadDailyRecord(state.selectedDate);
+    const existing = findDailyRecordByDate(state.selectedDate);
     if (existing) {
       const ok = window.confirm(`Record for ${state.selectedDate} exists. Overwrite?`);
       if (!ok) return;
@@ -214,9 +353,15 @@ export function initApp() {
       notes: state.notes,
       updatedAt: new Date().toISOString()
     };
-    saveDailyRecord(record);
-    state.data.dailyRecords[state.selectedDate] = record;
-    clearDraft();
+    if (cloudMode) {
+      await upsertCloudDailyRecord(cloudClient, authUserId, record);
+      await refreshCloudData();
+    } else {
+      saveDailyRecord(record);
+      state.data.dailyRecords[state.selectedDate] = record;
+      clearDraft();
+    }
+    clearDailyFields();
     markDirty(false);
     showMessage(`Saved ${state.selectedDate}.`, "ok");
     render();
@@ -272,7 +417,11 @@ export function initApp() {
 
   function renderDaily() {
     const { rows, totalExpenses, profit } = calculateCurrent();
-    const rec = loadDailyRecord(state.selectedDate);
+    const rec = findDailyRecordByDate(state.selectedDate);
+    const categories = Array.from(new Set(state.data.masterItems.map((item) => item.category).filter(Boolean))).sort();
+    if (state.dailyCategoryFilter !== "all" && !categories.includes(state.dailyCategoryFilter)) {
+      state.dailyCategoryFilter = "all";
+    }
     const tableRows = rows
       .map(
         (row) => `
@@ -294,6 +443,12 @@ export function initApp() {
         <div class="meta-row">
           <label>Date <input id="daily-date" type="date" value="${state.selectedDate}" /></label>
           <label>Revenue (POS) <input id="daily-revenue" type="number" min="0" step="0.01" value="${escapeHtml(state.revenue)}" /></label>
+          <label>Category
+            <select id="daily-category-filter">
+              <option value="all" ${state.dailyCategoryFilter === "all" ? "selected" : ""}>All</option>
+              ${categories.map((category) => `<option value="${escapeHtml(category)}" ${state.dailyCategoryFilter === category ? "selected" : ""}>${escapeHtml(category)}</option>`).join("")}
+            </select>
+          </label>
         </div>
         ${rec ? `<p class="hint">Saved record found for ${state.selectedDate}. Saving again will overwrite after confirmation.</p>` : ""}
         <table>
@@ -505,10 +660,20 @@ export function initApp() {
         render();
       });
     });
+    const logoutBtn = document.querySelector("#logout-btn");
+    if (logoutBtn) {
+      logoutBtn.addEventListener("click", async () => {
+        await signOut(cloudClient);
+        authUserId = null;
+        state.data = { masterItems: [], dailyRecords: {} };
+        state.dirty = false;
+        renderAuth("Signed out.", "ok");
+      });
+    }
 
     const masterForm = document.querySelector("#master-form");
     if (masterForm) {
-      masterForm.addEventListener("submit", (event) => {
+      masterForm.addEventListener("submit", async (event) => {
         event.preventDefault();
         const fd = new FormData(masterForm);
         const payload = {
@@ -521,8 +686,12 @@ export function initApp() {
           showMessage(Object.values(validate.errors)[0], "error");
           return;
         }
-        upsertItem(payload);
-        showMessage("Master list saved.", "ok");
+        try {
+          await upsertItem(payload);
+          showMessage("Master list saved.", "ok");
+        } catch (error) {
+          showMessage(error?.message || "Failed to save master list.", "error");
+        }
       });
     }
 
@@ -541,7 +710,13 @@ export function initApp() {
       });
     });
     document.querySelectorAll("[data-action='delete-item']").forEach((btn) => {
-      btn.addEventListener("click", () => deleteItem(btn.getAttribute("data-id")));
+      btn.addEventListener("click", async () => {
+        try {
+          await deleteItem(btn.getAttribute("data-id"));
+        } catch (error) {
+          showMessage(error?.message || "Failed to delete item.", "error");
+        }
+      });
     });
 
     const dateInput = document.querySelector("#daily-date");
@@ -567,6 +742,14 @@ export function initApp() {
       });
     }
 
+    const dailyCategoryFilter = document.querySelector("#daily-category-filter");
+    if (dailyCategoryFilter) {
+      dailyCategoryFilter.addEventListener("change", () => {
+        state.dailyCategoryFilter = dailyCategoryFilter.value || "all";
+        render();
+      });
+    }
+
     const notesInput = document.querySelector("#daily-notes");
     if (notesInput) {
       notesInput.addEventListener("input", () => {
@@ -587,7 +770,15 @@ export function initApp() {
     });
 
     const saveBtn = document.querySelector("#save-day");
-    if (saveBtn) saveBtn.addEventListener("click", saveDay);
+    if (saveBtn) {
+      saveBtn.addEventListener("click", async () => {
+        try {
+          await saveDay();
+        } catch (error) {
+          showMessage(error?.message || "Failed to save day.", "error");
+        }
+      });
+    }
 
     document.querySelectorAll("[data-action='open-date']").forEach((btn) => {
       btn.addEventListener("click", () => {
@@ -662,43 +853,6 @@ export function initApp() {
       });
     }
 
-    const jsonExport = document.querySelector("#export-json");
-    if (jsonExport) {
-      jsonExport.addEventListener("click", () => {
-        const text = createJsonBackup();
-        downloadFile(text, `restaurant-backup-${todayStr()}.json`, "application/json");
-      });
-    }
-
-    const jsonImport = document.querySelector("#import-json");
-    if (jsonImport) {
-      jsonImport.addEventListener("change", async () => {
-        const file = jsonImport.files?.[0];
-        if (!file) return;
-        const text = await file.text();
-        try {
-          restoreFromJson(text);
-          state.data = loadAppData();
-          loadDate(state.selectedDate);
-          showMessage("Backup restored.", "ok");
-          render();
-        } catch (error) {
-          showMessage(error.message, "error");
-        } finally {
-          jsonImport.value = "";
-        }
-      });
-    }
-
-    const csvExport = document.querySelector("#export-csv");
-    if (csvExport) {
-      csvExport.addEventListener("click", () => {
-        const rows = buildCsvRows(state.data);
-        const csv = toCsvString(rows);
-        downloadFile(csv, `restaurant-report-${todayStr()}.csv`, "text/csv");
-      });
-    }
-
     const xlsxExport = document.querySelector("#export-xlsx");
     if (xlsxExport) {
       xlsxExport.remove();
@@ -748,9 +902,7 @@ export function initApp() {
           <button data-nav="master" class="${state.activeTab === "master" ? "active" : ""}">Master List</button>
           <button data-nav="dashboard" class="${state.activeTab === "dashboard" ? "active" : ""}">Dashboard</button>
           <div class="spacer"></div>
-          <button id="export-json">Export JSON</button>
-          <label class="file-input">Import JSON<input id="import-json" type="file" accept=".json,application/json" /></label>
-          <button id="export-csv">Export CSV</button>
+          ${cloudMode ? '<button id="logout-btn" type="button">Logout</button>' : ""}
         </nav>
         <main>
           ${state.activeTab === "daily" ? renderDaily() : ""}
@@ -761,6 +913,21 @@ export function initApp() {
     `;
     bindEvents();
     if (state.activeTab === "dashboard") drawCharts();
+  }
+
+  if (cloudMode) {
+    try {
+      const session = await getCurrentSession(cloudClient);
+      if (!session) {
+        renderAuth();
+        return;
+      }
+      await afterCloudAuth(session, !logoutOnClose);
+      return;
+    } catch (error) {
+      renderAuth(error?.message || "Unable to initialize Supabase session.", "error");
+      return;
+    }
   }
 
   loadDate(state.selectedDate);

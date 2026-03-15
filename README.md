@@ -1,6 +1,6 @@
 # Restaurant Daily Expense and Profit App
 
-Local-first web app for restaurant daily revenue and expense tracking.
+Restaurant daily revenue/expense tracker with Supabase auth and online persistence.
 
 ## Run
 
@@ -8,6 +8,17 @@ Local-first web app for restaurant daily revenue and expense tracking.
 npm install
 npm run dev
 ```
+
+## Supabase Setup
+
+1. Create a Supabase project.
+2. Run SQL from `docs/supabase/schema.sql` in Supabase SQL Editor.
+3. Copy `.env.example` to `.env` and set:
+   - `VITE_SUPABASE_URL`
+   - `VITE_SUPABASE_ANON_KEY`
+4. Restart dev server.
+
+If env vars are not set, the app falls back to local mode for development/testing.
 
 ## Build
 
@@ -28,8 +39,7 @@ npm run test
 3. App auto-calculates amount per row, daily expenses, and daily profit.
 4. Use `Dashboard` for daily/weekly/monthly summaries and charts.
 
-## Backup and Export
+## Export
 
-- `Export JSON`: full backup for restore
-- `Import JSON`: restore complete data
-- `Export CSV` and `Export XLSX`: report files for sharing
+- Daily/Weekly/Monthly `Export XLSX` from dashboard cards.
+- Rows are grouped by `Category + Item + Unit Cost`, with `Revenue`, `Total Expenses`, and `Profit` footer lines.
